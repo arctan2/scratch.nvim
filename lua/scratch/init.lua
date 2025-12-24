@@ -1,6 +1,6 @@
 local M = {}
 
----@param opts { args: string[] | string, type?: "text" }
+---@param opts { args: string[] | string, type?: "text", mode?: "append" }
 ---@param bufnr number?
 local function make_scratch(opts, bufnr)
 	bufnr = bufnr or 0
@@ -10,7 +10,8 @@ local function make_scratch(opts, bufnr)
 	vim.bo[bufnr].swapfile = false
 
 	if opts.type == "text" then
-		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, opts.args)
+		local start = opts.mode == "append" and -1 or 0
+		vim.api.nvim_buf_set_lines(bufnr, start, -1, false, opts.args)
 		return
 	end
 
@@ -26,41 +27,66 @@ local function is_buf_in_view(bufnr)
 	return #win_list > 0
 end
 
----@param opts { args: string[] | string, type?: "text" }
+---@param bufnr number
+local function focus_to_buf(bufnr)
+	local win_id = vim.fn.win_findbuf(bufnr)[1]
+	if win_id then
+		vim.api.nvim_set_current_win(win_id)
+	end
+	vim.api.nvim_set_current_buf(bufnr)
+end
+
+---@return number
+---@param opts { args: string[] | string, type?: "text", mode?: "append" }
 ---@param bufnr number?
 function M.new_buf(opts, bufnr)
-	if bufnr then
-		vim.api.nvim_set_current_buf(bufnr)
-	else
-		vim.cmd("enew")
+	if bufnr == nil then
+		bufnr = vim.api.nvim_create_buf(true, true)
 	end
+
+	vim.api.nvim_set_current_buf(bufnr)
+
 	make_scratch(opts, bufnr)
+	focus_to_buf(bufnr)
+
+	return bufnr
 end
 
----@param opts { args: string[] | string, type?: "text" }
+
+---@return number
+---@param opts { args: string[] | string, type?: "text", mode?: "append" }
 ---@param bufnr number?
 function M.new_vsplit(opts, bufnr)
-	if bufnr ~= nil then
-		if not is_buf_in_view(bufnr) then
-			vim.cmd('vertical sbuffer ' .. bufnr)
-		end
-	else
-		vim.cmd("vnew")
+	if bufnr == nil then
+		bufnr = vim.api.nvim_create_buf(true, true)
 	end
+
+	if not is_buf_in_view(bufnr) then
+		vim.cmd('vertical sbuffer ' .. bufnr)
+	end
+
 	make_scratch(opts, bufnr)
+	focus_to_buf(bufnr)
+
+	return bufnr
 end
 
----@param opts { args: string[] | string, type?: "text" }
+---@return number
+---@param opts { args: string[] | string, type?: "text", mode?: "append" }
 ---@param bufnr number?
 function M.new_hsplit(opts, bufnr)
-	if bufnr ~= nil then
-		if not is_buf_in_view(bufnr) then
-			vim.cmd('sbuffer ' .. bufnr)
-		end
-	else
-		vim.cmd("split")
+	if bufnr == nil then
+		bufnr = vim.api.nvim_create_buf(true, true)
 	end
+
+	if not is_buf_in_view(bufnr) then
+		vim.cmd('sbuffer ' .. bufnr)
+	end
+
 	make_scratch(opts, bufnr)
+	focus_to_buf(bufnr)
+
+	return bufnr
 end
 
 function M.new_float(opts, wopts)
