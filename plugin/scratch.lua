@@ -1,8 +1,22 @@
 local scratch = require("scratch")
 
-vim.api.nvim_create_user_command("Scratch", scratch.new_buf, { nargs = "*" })
-vim.api.nvim_create_user_command("VScratch", scratch.new_vsplit, { nargs = "*" })
-vim.api.nvim_create_user_command("HScratch", scratch.new_hsplit, { nargs = "*" })
+-- local reloader = require("plenary.reload")
+-- local function reload()
+--  	reloader.reload_module("scratch")
+-- 	scratch = require("scratch")
+-- end
+-- 
+-- reload()
+
+local user_cmd_opts = { nargs = "*", complete = "file" }
+
+vim.api.nvim_create_user_command("Scratch", scratch.new_buf, user_cmd_opts)
+vim.api.nvim_create_user_command("VScratch", scratch.new_vsplit, user_cmd_opts)
+vim.api.nvim_create_user_command("HScratch", scratch.new_hsplit, user_cmd_opts)
+
+vim.api.nvim_create_user_command("Compile", scratch.compile_new_buf, user_cmd_opts)
+vim.api.nvim_create_user_command("VCompile", scratch.compile_new_vsplit, user_cmd_opts)
+vim.api.nvim_create_user_command("HCompile", scratch.compile_new_hsplit, user_cmd_opts)
 
 local is_floating_created = false
 
@@ -30,9 +44,9 @@ vim.api.nvim_create_user_command("FScratch", function (opts)
 
 	vim.keymap.set("n", "gf", jump_gf, { buffer = buf, noremap = true, silent = true })
 
-	vim.keymap.set("n", "q", function()
+	vim.keymap.set("n", "<c-x>", function()
 		is_floating_created = false
-		vim.api.nvim_win_close(0, true)
+		vim.api.nvim_buf_delete(0, {})
 	end, { buffer = buf })
 
 	vim.api.nvim_create_autocmd("WinClosed", {
@@ -94,4 +108,4 @@ vim.api.nvim_create_user_command("FScratch", function (opts)
 			vim.api.nvim_set_current_win(win)
 		end
 	end, { nargs = "*" })
-end, { nargs = "*" })
+end, user_cmd_opts)
