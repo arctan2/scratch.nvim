@@ -47,6 +47,14 @@ local function scratch_name(name)
 	return "Scratch: "..name
 end
 
+local function scroll_window_to_bottom(win_id)
+	if win_id > -1 then
+		local buf = vim.api.nvim_win_get_buf(win_id)
+		local line_count = vim.api.nvim_buf_line_count(buf)
+		vim.api.nvim_win_set_cursor(win_id, {line_count, 0})
+	end
+end
+
 ---@class Opts
 ---@field args string | string[]
 ---@field type? "text" | "terminal"
@@ -54,6 +62,7 @@ end
 
 ---@param opts Opts
 ---@param bufnr number?
+---@return number
 local function make_scratch(opts, bufnr)
 	bufnr = bufnr or 0
 
@@ -89,14 +98,14 @@ local function make_scratch(opts, bufnr)
 	if opts.type == "text" then
 		local start = opts.mode == "append" and -1 or 0
 		vim.api.nvim_buf_set_lines(bufnr, start, -1, false, opts.args)
-		return
+		return bufnr
 	end
 
 	local args = args_to_str(opts.args) ---@diagnostic disable-line
-	if args == "" then return end
+	if args == "" then return bufnr end
 
 	local scroll_to_end = function ()
-		vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(bufnr), 0 })
+		scroll_window_to_bottom(vim.fn.bufwinid(bufnr))
 	end
 
 	local on_stdout = function(_, data, _)
@@ -111,7 +120,6 @@ local function make_scratch(opts, bufnr)
 		if vim.api.nvim_buf_is_valid(bufnr) then
 			data = slice_with_escape_seq_removal(data, 1, #data - 1)
 			vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, data)
-			vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(bufnr), 0 })
 			scroll_to_end()
 		end
 	end
@@ -119,39 +127,47 @@ local function make_scratch(opts, bufnr)
 	local on_exit = function(_, exit_code)
 		if vim.api.nvim_buf_is_valid(bufnr) then
 			vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, {"", "Completed with exit code "..exit_code, ""})
-			vim.api.nvim_win_set_cursor(0, { vim.api.nvim_buf_line_count(bufnr), 0 })
 			scroll_to_end()
 		end
+	end
+
+	local check_buf_and_scroll_end = function()
+		if vim.api.nvim_buf_is_valid(bufnr) then
+			scroll_to_end()
+		end
+	end
+
+	local delete_old_create_new_buf = function (b)
+		local win_id = vim.fn.bufwinid(b)
+		local old_buf = b
+		local new_buf = vim.api.nvim_create_buf(true, true)
+		b = new_buf
+		vim.bo[b].bufhidden = "hide"
+		vim.bo[b].swapfile = false
+		vim.api.nvim_win_set_buf(win_id, new_buf)
+		if vim.api.nvim_buf_is_valid(old_buf) then
+			vim.api.nvim_buf_delete(old_buf, { force = true })
+		end
+		vim.keymap.set("n", "<c-x>", try_stop_job_delete_buf, { buffer = b })
+		vim.keymap.set('t', '<c-x>', try_stop_job_delete_buf, { buffer = b })
+		vim.keymap.set('t', '<Esc>', [[<C-\><C-n>]], { buffer = b })
+		vim.keymap.set('t', '<c-[>', [[<C-\><C-n>]], { buffer = b })
+		return b
 	end
 
 	vim.bo[bufnr].bufhidden = "hide"
 	vim.bo[bufnr].swapfile = false
 
 	if opts.type == "terminal" then
-		vim.bo[bufnr].bufhidden = "wipe"
+		bufnr = delete_old_create_new_buf(bufnr)
+
 		vim.b[bufnr].scratch_job_id = vim.fn.jobstart(args, {
 			term = true,
-			on_stdout = function ()
-				if vim.api.nvim_buf_is_valid(bufnr) then
-					scroll_to_end()
-				end
-			end,
-			on_stderr = function ()
-				if vim.api.nvim_buf_is_valid(bufnr) then
-					scroll_to_end()
-				end
-			end,
-			on_exit = function ()
-				if vim.api.nvim_buf_is_valid(bufnr) then
-					scroll_to_end()
-				end
-			end,
+			on_stdout = check_buf_and_scroll_end,
+			on_stderr = check_buf_and_scroll_end,
+			on_exit = check_buf_and_scroll_end,
 		})
 		vim.api.nvim_buf_set_name(bufnr, compile_name(args))
-		vim.api.nvim_create_autocmd({ "TermLeave", "BufWinLeave" }, {
-			buffer = bufnr,
-			callback = try_stop_job_delete_buf,
-		})
 	else
 		vim.bo[bufnr].buftype = "nofile"
 		vim.api.nvim_buf_set_lines(0, 0, -1, true, {})
@@ -162,17 +178,15 @@ local function make_scratch(opts, bufnr)
 			on_exit = on_exit,
 		})
 		vim.api.nvim_buf_set_name(bufnr, scratch_name(args))
-		vim.api.nvim_create_autocmd({ "BufWinLeave" }, {
-			buffer = bufnr,
-			callback = try_stop_job,
-		})
-		vim.api.nvim_create_autocmd({ "BufDelete" }, {
-			buffer = bufnr,
-			callback = try_stop_job_delete_buf,
-		})
 	end
 
+	vim.api.nvim_create_autocmd({ "BufDelete" }, {
+		buffer = bufnr,
+		callback = try_stop_job_delete_buf,
+	})
+
 	vim.keymap.set("n", "<c-c>", try_stop_job, { buffer = bufnr })
+	return bufnr
 end
 
 ---@param bufnr number?
@@ -213,7 +227,7 @@ end
 function M.new_buf(opts, bufnr)
 	bufnr = create_bufnr_if_not_exist_by_name(bufnr, args_to_str(opts.args)) ---@diagnostic disable-line
 	vim.api.nvim_set_current_buf(bufnr)
-	make_scratch(opts, bufnr)
+	bufnr = make_scratch(opts, bufnr)
 	focus_to_buf(bufnr)
 	return bufnr
 end
@@ -226,7 +240,7 @@ function M.new_vsplit(opts, bufnr)
 	if not is_buf_in_view(bufnr) then
 		vim.cmd('vertical sbuffer ' .. bufnr)
 	end
-	make_scratch(opts, bufnr)
+	bufnr = make_scratch(opts, bufnr)
 	focus_to_buf(bufnr)
 	return bufnr
 end
@@ -239,7 +253,7 @@ function M.new_hsplit(opts, bufnr)
 	if not is_buf_in_view(bufnr) then
 		vim.cmd('sbuffer ' .. bufnr)
 	end
-	make_scratch(opts, bufnr)
+	bufnr = make_scratch(opts, bufnr)
 	focus_to_buf(bufnr)
 	return bufnr
 end

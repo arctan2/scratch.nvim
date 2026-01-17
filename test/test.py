@@ -1,2 +1,4 @@
-for i in range(2000):
+import time
+for i in range(100):
     print(i)
+    time.sleep(0.5)
