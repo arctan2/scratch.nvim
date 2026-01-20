@@ -137,22 +137,23 @@ local function make_scratch(opts, bufnr)
 		end
 	end
 
-	local delete_old_create_new_buf = function (b)
-		local win_id = vim.fn.bufwinid(b)
-		local old_buf = b
+	local delete_old_create_new_buf = function (old_buf)
+		local win_id = vim.fn.bufwinid(old_buf)
 		local new_buf = vim.api.nvim_create_buf(true, true)
-		b = new_buf
-		vim.bo[b].bufhidden = "hide"
-		vim.bo[b].swapfile = false
+		vim.bo[new_buf].bufhidden = "hide"
+		vim.bo[new_buf].swapfile = false
 		vim.api.nvim_win_set_buf(win_id, new_buf)
 		if vim.api.nvim_buf_is_valid(old_buf) then
 			vim.api.nvim_buf_delete(old_buf, { force = true })
 		end
-		vim.keymap.set("n", "<c-x>", try_stop_job_delete_buf, { buffer = b })
-		vim.keymap.set('t', '<c-x>', try_stop_job_delete_buf, { buffer = b })
-		vim.keymap.set('t', '<Esc>', [[<C-\><C-n>]], { buffer = b })
-		vim.keymap.set('t', '<c-[>', [[<C-\><C-n>]], { buffer = b })
-		return b
+		vim.keymap.set("n", "<c-x>", try_stop_job_delete_buf, { buffer = new_buf })
+		vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+			buffer = new_buf,
+			callback = function()
+				vim.cmd("stopinsert")
+			end,
+		})
+		return new_buf
 	end
 
 	vim.bo[bufnr].bufhidden = "hide"

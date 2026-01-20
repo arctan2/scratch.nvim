@@ -1,3 +1,5 @@
+-- vim.cmd([[set rtp+=/home/admin-u/stuff/nvim_plugins/scratch.nvim]])
+
 local scratch = require("scratch")
 
 -- local reloader = require("plenary.reload")
