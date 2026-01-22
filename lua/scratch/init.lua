@@ -27,16 +27,14 @@ local function args_to_str(args)
 end
 
 local function clean_terminal_unlisted_bufs()
-    for _, b in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_valid(b) then
-			local name = vim.api.nvim_buf_get_name(b)
-			if name:match("^term://.*") then
-				local chan = vim.bo[b].channel
-				if chan > 0 then pcall(vim.fn.jobstop, chan) end
-				pcall(vim.api.nvim_command, "bwipeout! " .. b)
-			end
+	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+		local is_unlisted = not vim.bo[bufnr].buflisted
+		local is_terminal = vim.bo[bufnr].buftype == 'terminal'
+		local is_hidden = #vim.fn.win_findbuf(bufnr) == 0
+		if is_unlisted and not (is_hidden and is_terminal) then
+			vim.api.nvim_buf_delete(bufnr, { force = true })
 		end
-    end
+	end
 end
 
 local function compile_name(name)
